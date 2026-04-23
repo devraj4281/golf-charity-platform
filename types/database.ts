@@ -22,8 +22,8 @@ export type Profile = {
   charity_id:               string | null
   charity_pct:              number
   subscription_status:      SubscriptionStatus
-  stripe_customer_id:       string | null
-  stripe_sub_id:            string | null
+  razorpay_customer_id:     string | null
+  razorpay_sub_id:          string | null
   sub_plan:                 SubPlan | null
   sub_current_period_end:   string | null
   created_at:               string
@@ -103,7 +103,7 @@ export type Database = {
       profiles: {
         Row:    Profile
         Insert: Omit<Profile, 'created_at' | 'updated_at'>
-        Update: Partial<Omit<Profile, 'id' | 'created_at'>>
+        Update: Partial<Omit<Profile, 'id' | 'created_at'>> & { updated_at?: string }
       }
       scores: {
         Row:    Score
@@ -128,7 +128,7 @@ export type Database = {
       winners: {
         Row:    Winner
         Insert: Omit<Winner, 'id' | 'created_at' | 'updated_at'>
-        Update: Partial<Omit<Winner, 'id' | 'user_id' | 'draw_id' | 'created_at'>>
+        Update: Partial<Omit<Winner, 'id' | 'user_id' | 'draw_id' | 'created_at'>> & { updated_at?: string }
       }
       prize_pool_ledger: {
         Row:    PrizePoolLedgerEntry

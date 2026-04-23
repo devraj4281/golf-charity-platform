@@ -1,13 +1,11 @@
 /**
  * Centralized database queries.
- * All Supabase table access goes through here — no raw .from() calls in components or pages.
- *
- * Each function takes a `supabase` client as its first argument so it works with
- * both the standard cookie-based server client and the admin client.
+ * Pure data access — no auth, no payment logic, no business rules.
+ * Each function accepts a `supabase` client (DI pattern).
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { Database } from '@/types/database'
+import type { Database, Profile, Score, Draw, DrawEntry, Winner, PrizePoolLedgerEntry } from '@/types/database'
 
 type DB = SupabaseClient<Database>
 
@@ -18,24 +16,68 @@ export async function getProfileById(db: DB, userId: string) {
     .from('profiles')
     .select('*')
     .eq('id', userId)
+    .limit(1)
     .single()
   if (error) throw error
-  return data
+  return data as Profile
+}
+
+export async function upsertProfile(
+  db: DB,
+  fields: {
+    id: string
+    email: string
+    full_name: string
+    role?: Profile['role']
+    subscription_status?: Profile['subscription_status']
+    charity_pct?: number
+    charity_id?: string | null
+  }
+) {
+  const { data, error } = await db
+    .from('profiles')
+    .upsert(
+      { ...fields, updated_at: new Date().toISOString() },
+      { onConflict: 'id' }
+    )
+    .select()
+    .limit(1)
+    .single()
+  if (error) throw error
+  return data as Profile
 }
 
 export async function updateProfile(
   db: DB,
   userId: string,
-  updates: Partial<Database['public']['Tables']['profiles']['Update']>
+  updates: Partial<Omit<Profile, 'id' | 'created_at'>>
 ) {
   const { data, error } = await db
     .from('profiles')
     .update({ ...updates, updated_at: new Date().toISOString() })
     .eq('id', userId)
     .select()
+    .limit(1)
     .single()
   if (error) throw error
-  return data
+  return data as Profile
+}
+
+export async function activateSubscription(
+  db: DB,
+  userId: string,
+  plan: Profile['sub_plan'],
+  periodEnd: string,
+  rzpOrderId: string,
+  rzpPaymentId: string
+) {
+  return updateProfile(db, userId, {
+    subscription_status: 'active',
+    sub_plan: plan,
+    sub_current_period_end: periodEnd,
+    razorpay_sub_id: rzpOrderId,
+    razorpay_customer_id: rzpPaymentId,
+  })
 }
 
 export async function getAllActiveSubscribers(db: DB) {
@@ -49,9 +91,6 @@ export async function getAllActiveSubscribers(db: DB) {
 
 // ─── Scores ───────────────────────────────────────────────────────────────────
 
-/**
- * Returns latest 5 scores for a user, most recent first.
- */
 export async function getUserScores(db: DB, userId: string) {
   const { data, error } = await db
     .from('scores')
@@ -60,39 +99,29 @@ export async function getUserScores(db: DB, userId: string) {
     .order('entry_date', { ascending: false })
     .limit(5)
   if (error) throw error
-  return data ?? []
+  return (data ?? []) as Score[]
 }
 
-/**
- * Upserts a score. Unique constraint on (user_id, entry_date) enforces one per date.
- * The DB trigger `trg_rolling_scores` handles the rolling-5 deletion.
- */
 export async function upsertScore(
   db: DB,
   userId: string,
   score: number,
-  entryDate: string // 'YYYY-MM-DD'
+  entryDate: string
 ) {
   if (score < 1 || score > 45) {
     throw new Error('Score must be between 1 and 45 (Stableford format)')
   }
-
   const { data, error } = await db
     .from('scores')
     .upsert(
-      {
-        user_id: userId,
-        score,
-        entry_date: entryDate,
-        updated_at: new Date().toISOString(),
-      },
+      { user_id: userId, score, entry_date: entryDate, updated_at: new Date().toISOString() },
       { onConflict: 'user_id,entry_date' }
     )
     .select()
+    .limit(1)
     .single()
-
   if (error) throw error
-  return data
+  return data as Score
 }
 
 export async function deleteScore(db: DB, scoreId: string, userId: string) {
@@ -104,23 +133,13 @@ export async function deleteScore(db: DB, scoreId: string, userId: string) {
   if (error) throw error
 }
 
-/**
- * Gets all active subscriber scores for draw evaluation.
- * Returns a map of userId → score[]
- */
-export async function getAllActiveScores(
-  db: DB,
-  userIds: string[]
-): Promise<Record<string, number[]>> {
+export async function getAllActiveScores(db: DB, userIds: string[]): Promise<Record<string, number[]>> {
   if (userIds.length === 0) return {}
-
   const { data, error } = await db
     .from('scores')
     .select('user_id, score')
     .in('user_id', userIds)
-
   if (error) throw error
-
   const map: Record<string, number[]> = {}
   for (const row of data ?? []) {
     if (!map[row.user_id]) map[row.user_id] = []
@@ -129,29 +148,13 @@ export async function getAllActiveScores(
   return map
 }
 
-/**
- * Gets score frequency across all active users for algorithmic draw.
- * Returns a map of score (1–45) → count
- */
-export async function getScoreFrequency(
-  db: DB,
-  lookbackDays = 90
-): Promise<Record<number, number>> {
-  const since = new Date(Date.now() - lookbackDays * 86_400_000)
-    .toISOString()
-    .split('T')[0]
-
-  const { data, error } = await db
-    .from('scores')
-    .select('score')
-    .gte('entry_date', since)
-
+export async function getScoreFrequency(db: DB, lookbackDays = 90): Promise<Record<number, number>> {
+  const since = new Date(Date.now() - lookbackDays * 86_400_000).toISOString().split('T')[0]
+  const { data, error } = await db.from('scores').select('score').gte('entry_date', since)
   if (error) throw error
-
   const freq: Record<number, number> = {}
   for (let i = 1; i <= 45; i++) freq[i] = 0
   for (const row of data ?? []) freq[row.score]++
-
   return freq
 }
 
@@ -199,7 +202,7 @@ export async function getPublishedDraws(db: DB, limit = 12) {
     .order('draw_month', { ascending: false })
     .limit(limit)
   if (error) throw error
-  return data ?? []
+  return (data ?? []) as Draw[]
 }
 
 export async function getDrawById(db: DB, drawId: string) {
@@ -209,7 +212,7 @@ export async function getDrawById(db: DB, drawId: string) {
     .eq('id', drawId)
     .single()
   if (error) throw error
-  return data
+  return data as Draw
 }
 
 export async function getLatestPublishedDraw(db: DB) {
@@ -221,12 +224,9 @@ export async function getLatestPublishedDraw(db: DB) {
     .limit(1)
     .single()
   if (error) return null
-  return data
+  return data as Draw
 }
 
-/**
- * Returns the last draw that had no 5-match winner (for jackpot rollover calculation).
- */
 export async function getPreviousDrawForRollover(db: DB, beforeMonth: Date) {
   const { data: prevDraw, error } = await db
     .from('draws')
@@ -246,75 +246,64 @@ export async function getPreviousDrawForRollover(db: DB, beforeMonth: Date) {
     .limit(1)
 
   const hadJackpotWinner = prevWinners && prevWinners.length > 0
-
   return {
     jackpotCarried: hadJackpotWinner
       ? 0
-      : (prevDraw.prize_pool_5 + prevDraw.jackpot_carried),
+      : ((prevDraw as any).prize_pool_5 + (prevDraw as any).jackpot_carried),
   }
 }
 
 export async function insertDraw(
   db: DB,
-  draw: Database['public']['Tables']['draws']['Insert']
+  draw: Omit<Draw, 'id' | 'created_at'>
 ) {
   const { data, error } = await db
     .from('draws')
-    .insert(draw)
+    .insert(draw as any)
     .select()
+    .limit(1)
     .single()
   if (error) throw error
-  return data
+  return data as Draw
 }
 
 export async function publishDraw(db: DB, drawId: string) {
   const { data, error } = await db
     .from('draws')
-    .update({
-      status: 'published',
-      published_at: new Date().toISOString(),
-    })
+    .update({ status: 'published', published_at: new Date().toISOString() } as any)
     .eq('id', drawId)
     .select()
+    .limit(1)
     .single()
   if (error) throw error
-  return data
+  return data as Draw
 }
 
 // ─── Draw entries ─────────────────────────────────────────────────────────────
 
-export async function insertDrawEntries(
-  db: DB,
-  entries: Database['public']['Tables']['draw_entries']['Insert'][]
-) {
+export async function insertDrawEntries(db: DB, entries: Omit<DrawEntry, 'id'>[]) {
   if (entries.length === 0) return
-  const { error } = await db.from('draw_entries').insert(entries)
+  const { error } = await db.from('draw_entries').insert(entries as any)
   if (error) throw error
 }
 
-export async function getDrawEntryForUser(
-  db: DB,
-  drawId: string,
-  userId: string
-) {
+export async function getDrawEntryForUser(db: DB, drawId: string, userId: string) {
   const { data, error } = await db
     .from('draw_entries')
     .select('*')
     .eq('draw_id', drawId)
     .eq('user_id', userId)
+    .limit(1)
     .single()
   if (error) return null
-  return data
+  return data as DrawEntry
 }
 
 // ─── Winners ──────────────────────────────────────────────────────────────────
 
-export async function insertWinners(
-  db: DB,
-  winners: Database['public']['Tables']['winners']['Insert'][]
-) {
+export async function insertWinners(db: DB, winners: Omit<Winner, 'id' | 'created_at' | 'updated_at'>[]) {
   if (winners.length === 0) return
-  const { error } = await db.from('winners').insert(winners)
+  const { error } = await db.from('winners').insert(winners as any)
   if (error) throw error
 }
 
@@ -340,19 +329,17 @@ export async function getWinnersForUser(db: DB, userId: string) {
 export async function updateWinnerStatus(
   db: DB,
   winnerId: string,
-  updates: Pick<
-    Database['public']['Tables']['winners']['Update'],
-    'status' | 'proof_url' | 'admin_notes'
-  >
+  updates: Pick<Partial<Winner>, 'status' | 'proof_url' | 'admin_notes'>
 ) {
   const { data, error } = await db
     .from('winners')
-    .update({ ...updates, updated_at: new Date().toISOString() })
+    .update({ ...updates, updated_at: new Date().toISOString() } as any)
     .eq('id', winnerId)
     .select()
+    .limit(1)
     .single()
   if (error) throw error
-  return data
+  return data as Winner
 }
 
 export async function getAllPendingWinners(db: DB) {
@@ -369,9 +356,9 @@ export async function getAllPendingWinners(db: DB) {
 
 export async function insertLedgerEntry(
   db: DB,
-  entry: Database['public']['Tables']['prize_pool_ledger']['Insert']
+  entry: Omit<PrizePoolLedgerEntry, 'id' | 'created_at'>
 ) {
-  const { error } = await db.from('prize_pool_ledger').insert(entry)
+  const { error } = await db.from('prize_pool_ledger').insert(entry as any)
   if (error) throw error
 }
 
@@ -379,9 +366,7 @@ export async function getTotalPrizePool(db: DB): Promise<number> {
   const { data, error } = await db
     .from('prize_pool_ledger')
     .select('amount, entry_type')
-
   if (error) throw error
-
   return (data ?? []).reduce((sum, row) => {
     if (row.entry_type === 'prize_out') return sum - row.amount
     return sum + row.amount
