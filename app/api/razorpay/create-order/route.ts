@@ -3,8 +3,14 @@ import { requireUser } from '@/lib/auth/requireUser'
 import { createOrder } from '@/lib/payments/razorpay'
 
 export async function POST(req: Request) {
+  let user
   try {
-    const user = await requireUser()
+    user = await requireUser()
+  } catch {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
+  try {
     const { plan } = await req.json()
 
     if (!plan || !['monthly', 'yearly'].includes(plan)) {

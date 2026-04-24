@@ -5,8 +5,14 @@ import { createAdminClient } from '@/lib/supabase/server'
 import { activateUserSubscription } from '@/lib/services/subscription.service'
 
 export async function POST(req: Request) {
+  let user
   try {
-    const user = await requireUser()
+    user = await requireUser()
+  } catch {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
+  try {
     const { razorpay_order_id, razorpay_payment_id, razorpay_signature, planType } = await req.json()
 
     if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature || !planType) {

@@ -7,7 +7,11 @@ import type { DrawType } from '@/lib/draw-engine/index'
 export async function POST(req: Request) {
   try {
     await requireAdmin()
+  } catch {
+    return NextResponse.json({ error: 'Admin access required' }, { status: 403 })
+  }
 
+  try {
     const { drawType, isSimulation } = await req.json()
 
     if (!drawType || !['random', 'algorithmic'].includes(drawType)) {
