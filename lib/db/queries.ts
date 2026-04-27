@@ -5,9 +5,12 @@
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { Database, Profile, Score, Draw, DrawEntry, Winner, PrizePoolLedgerEntry } from '@/types/database'
+import type { Profile, Score, Draw, DrawEntry, Winner, PrizePoolLedgerEntry } from '@/types/database'
 
-type DB = SupabaseClient<Database>
+// Using SupabaseClient<any> because the hand-written Database stubs cause
+// Supabase's internal generics to resolve Update/Insert to `never`.
+// Type safety is enforced via explicit function parameter types instead.
+type DB = SupabaseClient<any>
 
 // ─── Profiles ────────────────────────────────────────────────────────────────
 
@@ -37,7 +40,7 @@ export async function upsertProfile(
   const { data, error } = await db
     .from('profiles')
     .upsert(
-      { ...fields, updated_at: new Date().toISOString() },
+      { ...fields, updated_at: new Date().toISOString() } as any,
       { onConflict: 'id' }
     )
     .select()
@@ -54,7 +57,7 @@ export async function updateProfile(
 ) {
   const { data, error } = await db
     .from('profiles')
-    .update({ ...updates, updated_at: new Date().toISOString() })
+    .update({ ...updates, updated_at: new Date().toISOString() } as any)
     .eq('id', userId)
     .select()
     .limit(1)

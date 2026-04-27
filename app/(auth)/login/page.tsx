@@ -24,10 +24,10 @@ export default function LoginPage() {
 
       if (result?.error) {
         setError(result.error)
-      } else if (result?.confirmEmail) {
+      } else if ((result as any)?.confirmEmail) {
         setMessage('Success! Check your email to verify your account.')
       }
-      // On success with no return value, Next.js redirect() handles navigation
+    
     })
   }
 

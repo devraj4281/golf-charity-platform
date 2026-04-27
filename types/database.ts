@@ -1,9 +1,4 @@
-/**
- * TypeScript types generated from the Supabase schema.
- * In production, generate this with: npx supabase gen types typescript --local
- *
- * This hand-written version mirrors the schema exactly for development.
- */
+
 
 export type SubscriptionStatus = 'active' | 'inactive' | 'cancelled' | 'past_due'
 export type SubPlan             = 'monthly' | 'yearly'

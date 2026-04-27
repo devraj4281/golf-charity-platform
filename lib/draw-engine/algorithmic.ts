@@ -4,17 +4,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
  * Algorithmic draw: weighted toward scores that appear least often
  * across all active subscribers — increases variance and fairness.
  */
-export async function generateAlgorithmicNumbers(supabase: SupabaseClient): Promise<number[]> {
-  const { data: scores } = await supabase
-    .from('scores')
-    .select('score')
-    .gte('entry_date', new Date(Date.now() - 90 * 86400000).toISOString().split('T')[0])
-
-  // Frequency map: score → count
-  const freq: Record<number, number> = {}
-  for (let i = 1; i <= 45; i++) freq[i] = 0
-  for (const row of scores ?? []) freq[row.score]++
-
+export function generateAlgorithmicNumbers(freq: Record<number, number>): number[] {
   // Weight = inverse frequency (rarer scores get higher weight)
   const maxFreq = Math.max(...Object.values(freq)) + 1
   const weights = Object.entries(freq).map(([score, count]) => ({

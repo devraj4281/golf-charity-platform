@@ -179,14 +179,17 @@ export async function runDraw(
     ...winners5.map(uid => ({
       draw_id: drawRecord.id, user_id: uid,
       match_type: '5_match' as const,  prize_amount: prizeFor5,
+      status: 'pending' as const, proof_url: null, admin_notes: null,
     })),
     ...winners4.map(uid => ({
       draw_id: drawRecord.id, user_id: uid,
       match_type: '4_match' as const, prize_amount: prizeFor4,
+      status: 'pending' as const, proof_url: null, admin_notes: null,
     })),
     ...winners3.map(uid => ({
       draw_id: drawRecord.id, user_id: uid,
       match_type: '3_match' as const, prize_amount: prizeFor3,
+      status: 'pending' as const, proof_url: null, admin_notes: null,
     })),
   ])
 

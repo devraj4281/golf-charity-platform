@@ -3,7 +3,7 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 
-// Shared return type for form state
+
 export type AuthState = {
   error?: string
   success?: string
@@ -41,7 +41,7 @@ export async function signup(formData: FormData) {
   }
 
   if (data.user) {
-    // Manually create the profile from the server instead of fighting Postgres triggers!
+  
     const { error: profileError } = await supabase
       .from('profiles')
       .insert({
