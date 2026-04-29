@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { requireUser } from '@/lib/auth/requireUser'
-import { verifyPaymentSignature } from '@/lib/payments/razorpay'
+import { verifyPaymentSignature } from '@/lib/integrations/razorpay'
 import { createAdminClient } from '@/lib/supabase/server'
 import { activateUserSubscription } from '@/lib/services/subscription.service'
 

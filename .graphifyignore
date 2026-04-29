@@ -1,0 +1,16 @@
+node_modules/
+.next/
+.git/
+build/
+out/
+graphify-out/
+public/
+.agent/
+*.png
+*.jpg
+*.svg
+package-lock.json
+.env*
+supabase/migrations/
+*.log
+favicon.ico

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { requireUser } from '@/lib/auth/requireUser'
-import { createOrder } from '@/lib/payments/razorpay'
+import { createOrder } from '@/lib/integrations/razorpay'
 
 export async function POST(req: Request) {
   let user

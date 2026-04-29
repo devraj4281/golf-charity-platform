@@ -1,4 +1,9 @@
-
+/**
+ * lib/services/draw.service.ts
+ *
+ * Orchestrates the draw execution.
+ * Validates state, resolves drawMonth, and delegates to the pure draw-engine.
+ */
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/types/database'
