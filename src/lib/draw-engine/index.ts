@@ -10,7 +10,6 @@ import {
   insertDraw,
   insertDrawEntries,
   insertWinners,
-  publishDraw,
 } from '@/lib/db/queries'
 
 type DB = SupabaseClient<Database>
