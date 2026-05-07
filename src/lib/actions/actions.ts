@@ -71,7 +71,7 @@ export async function signup(formData: FormData) {
 
 // ─── Sign In ──────────────────────────────────────────────────────────────────
 
-export async function login(formData: FormData) {
+export async function login(formData: FormData, redirectTo?: string) {
   const supabase = await createClient()
 
   const email = String(formData.get('email') ?? '').trim()
@@ -83,7 +83,7 @@ export async function login(formData: FormData) {
     return { error: error.message }
   }
 
-  redirect('/dashboard')
+  redirect(redirectTo || '/dashboard')
 }
 
 // ─── Sign Out ─────────────────────────────────────────────────────────────────
