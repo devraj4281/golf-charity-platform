@@ -3,7 +3,12 @@ import { updateSession } from '@/lib/supabase/middleware'
 
 
 export async function middleware(request: NextRequest) {
-  return await updateSession(request)
+  const response = await updateSession(request)
+  
+  // Set the current URL in a header so it can be read in Server Components
+  response.headers.set('x-url', request.url)
+  
+  return response
 }
 
 export const config = {
