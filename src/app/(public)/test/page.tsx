@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { calculatePrizePool } from '@/lib/prize-pool/calculate'
 import { getUserScores } from '@/lib/db/queries'
+import { ApiTester } from './ApiTester'
 
 export const dynamic = 'force-dynamic'
 
@@ -40,7 +41,13 @@ export default async function DiagnosticPage() {
       </section>
 
       <section className="bg-zinc-100 dark:bg-zinc-900 p-6 rounded-lg">
-        <h2 className="text-xl font-semibold mb-2">2. Prize Pool Engine Test</h2>
+        <h2 className="text-xl font-semibold mb-2">2. API & Routing Connectivity (Client-Side)</h2>
+        <ApiTester />
+        <p className="text-sm text-zinc-500 mt-2">This tests the API routes from your browser to verify routing manifest integrity.</p>
+      </section>
+
+      <section className="bg-zinc-100 dark:bg-zinc-900 p-6 rounded-lg">
+        <h2 className="text-xl font-semibold mb-2">3. Prize Pool Engine Test</h2>
         {poolError ? (
           <p className="text-red-500 font-mono">❌ Error: {poolError}</p>
         ) : (
@@ -52,7 +59,7 @@ export default async function DiagnosticPage() {
       </section>
 
       <section className="bg-zinc-100 dark:bg-zinc-900 p-6 rounded-lg">
-        <h2 className="text-xl font-semibold mb-2">3. Score Queries Test</h2>
+        <h2 className="text-xl font-semibold mb-2">4. Score Queries Test (Server-Side)</h2>
         {!user ? (
           <p className="text-yellow-600 font-mono">⚠️ Log in first to see score querying.</p>
         ) : scoreError ? (

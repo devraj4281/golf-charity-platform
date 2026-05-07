@@ -1,0 +1,26 @@
+
+C:\Users\solod\Documents\golf-charity-platform
+├── components.json
+├── eslint.config.mjs
+├── graphify-out
+├── middleware.ts
+├── next-env.d.ts
+├── next.config.ts
+├── node_modules
+├── package-lock.json
+├── package.json
+├── postcss.config.mjs
+├── public
+├── README.md
+├── src
+├── structure.json
+├── structure.txt
+├── tsconfig.json
+├── tsconfig.tsbuildinfo
+└── vitest.config.ts
+
+directory: 4 file: 14
+
+
+
+[2K[1G
