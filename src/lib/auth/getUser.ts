@@ -1,19 +1,22 @@
 import { createClient } from '@/lib/supabase/server'
 import { ensureProfile } from '@/lib/services/profile.service'
 import type { Profile } from '@/types/database'
+import type { User } from '@supabase/supabase-js'
+import { cache } from 'react'
 
 export type AuthUser = {
   id: string
   email: string
   profile: Profile
+  user: User
 }
 
 /**
  * Fetches the currently authenticated user and their profile.
- * Auto-creates profile via ensureProfile() if missing (self-healing).
- * Always use this instead of supabase.auth.getSession().
+ * Wrapped in React cache() so multiple calls within the same server
+ * render (e.g. layout + page) only hit Supabase ONCE.
  */
-export async function getUser(): Promise<AuthUser | null> {
+export const getUser = cache(async (): Promise<AuthUser | null> => {
   const supabase = await createClient()
 
   const { data: { user }, error: authError } = await supabase.auth.getUser()
@@ -36,5 +39,7 @@ export async function getUser(): Promise<AuthUser | null> {
     id: user.id,
     email: user.email!,
     profile: resolvedProfile as Profile,
+    user: user,
   }
-}
+})
+

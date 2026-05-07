@@ -1,201 +1,317 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import Script from 'next/script'
-import type { Profile, Draw } from '@/types/database'
-import { DrawSection } from '@/components/draw/DrawSection'
-import { BentoGrid, BentoGridItem } from '@/components/ui/bento-grid'
-import { Trophy, Activity, Heart, BarChart3, ArrowRight } from 'lucide-react'
+import { useSearchParams, useRouter } from 'next/navigation'
+import type { Profile, Draw, Score } from '@/types/database'
+import { 
+  Trophy, 
+  Target, 
+  TrendingUp, 
+  Heart, 
+  Wallet,
+  ArrowRight,
+  Clock,
+  Calendar,
+  ChevronRight,
+  CreditCard,
+  AlertCircle
+} from 'lucide-react'
+import { cn } from '@/lib/utils/cn'
+import { RazorpayCheckout } from '@/components/payment/RazorpayCheckout'
+import Image from 'next/image'
 
-// Add Razorpay type to window to prevent TS errors
-declare global {
-  interface Window {
-    Razorpay: any
-  }
+interface Props {
+  profile: Profile
+  latestDraw: Draw | null
+  initialScores: Score[]
+  totalWinnings: number
+  totalCharity: number
 }
 
-export default function DashboardClient({ profile, latestDraw }: { profile: Profile, latestDraw: Draw | null }) {
-  const [loading, setLoading] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
+export default function DashboardClient({ profile, latestDraw, initialScores, totalWinnings, totalCharity }: Props) {
+  const searchParams = useSearchParams()
+  const router = useRouter()
+  const planParam = searchParams.get('plan') as 'monthly' | 'yearly' | null
+  const [autoCheckout, setAutoCheckout] = useState(false)
+
+  const firstName = profile.full_name?.split(' ')[0] || 'Golfer'
+  const isSubscribed = profile.subscription_status === 'active'
+  const today = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
   
-  const isActive = profile.subscription_status === 'active'
-
-  const handleSubscribe = async (plan: 'monthly' | 'yearly') => {
-    setLoading(plan)
-    setError(null)
-
-    try {
-      // 1. Generate Order ID on Backend
-      const res = await fetch('/api/razorpay/create-order', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ plan })
-      })
-      const data = await res.json()
-      
-      if (!data.order_id) {
-        throw new Error(data.error || 'Failed to initialize Razorpay')
-      }
-
-      // 2. Launch Razorpay UI Menu manually
-      const options = {
-        key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || 'dummy_public_key',
-        amount: data.amount,
-        currency: "INR",
-        name: "Golf Charity Platform",
-        description: `Premium ${plan === 'monthly' ? 'Monthly' : 'Yearly'} Access`,
-        order_id: data.order_id,
-        handler: async function (response: any) {
-          // 3. Razorpay confirmed charge, now tell Backend to Verify Cryptographic signatures natively
-          try {
-             const verifyRes = await fetch('/api/razorpay/verify', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  razorpay_payment_id: response.razorpay_payment_id,
-                  razorpay_order_id: response.razorpay_order_id,
-                  razorpay_signature: response.razorpay_signature,
-                  planType: plan
-                })
-             })
-             
-             const verifyData = await verifyRes.json()
-             if (verifyData.success) {
-               window.location.reload() // Successful update, refreshes to reveal active mode!
-             } else {
-               setError('Security verification failed. Please contact support.')
-             }
-          } catch(e) {
-             setError('Failed to record active subscription.')
-          }
-        },
-        prefill: {
-          name: data.user_name,
-          email: data.user_email,
-        },
-        theme: {
-          color: "#09090b" // Zinc-950
-        }
-      }
-
-      const rzp = new window.Razorpay(options)
-      
-      rzp.on('payment.failed', function (response: any){
-        setError(`Payment Failed: ${response.error.description}`)
-      })
-
-      rzp.open()
-
-    } catch (err: any) {
-      setError(err.message || 'Network error attempting checkout')
-    } finally {
-      setLoading(null)
+  useEffect(() => {
+    if (planParam && !isSubscribed) {
+      setAutoCheckout(true)
     }
-  }
+  }, [planParam, isSubscribed])
+
+  // Calculate stats
+  const totalRounds = initialScores.length
+  const bestScore = initialScores.length > 0 ? Math.max(...initialScores.map(s => s.score)) : 0
+  
+  // Draw countdown (simplified)
+  const drawDate = latestDraw ? new Date(latestDraw.draw_month) : new Date()
+  const daysLeft = Math.max(0, Math.ceil((drawDate.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)))
 
   return (
-    <div className="max-w-7xl mx-auto p-4 md:p-8 space-y-12">
-      {/* Load Razorpay DOM Script */}
-      <Script src="https://checkout.razorpay.com/v1/checkout.js" strategy="lazyOnload" />
-
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-end md:justify-between pb-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight text-white font-sans">Welcome, {profile.full_name}</h1>
-          <p className="text-zinc-400 mt-2">Manage your subscription and performance scores.</p>
-        </div>
-        <div className="mt-4 md:mt-0">
-          <span className={`px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider ${isActive ? 'bg-green-500/10 text-green-400 border border-green-500/20' : 'bg-red-500/10 text-red-400 border border-red-500/20'}`}>
-            {isActive ? 'Active Subscriber' : 'Inactive'}
-          </span>
-        </div>
-      </div>
-
-      {/* Subscription Call to Action */}
-      {!isActive && (
-        <motion.div 
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="bg-gradient-to-br from-indigo-500/10 to-purple-500/5 border border-indigo-500/20 rounded-3xl p-8 md:p-12 text-center shadow-2xl"
-        >
-          <h2 className="text-3xl font-bold text-white mb-4 tracking-tight">Unlock The Platform</h2>
-          <p className="text-zinc-300 max-w-2xl mx-auto mb-8 text-lg">
-            You must have an active subscription to submit daily scores, participate in the monthly algorithmic draws, and earn placements. 
-            <strong className="text-indigo-400"> 10% of your subscription is automatically donated to your linked charity.</strong>
-          </p>
-          
-          {error && <p className="text-red-400 text-sm mb-6 bg-red-500/10 py-3 px-6 rounded-xl inline-block border border-red-500/20">{error}</p>}
-          
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-            <button 
-              onClick={() => handleSubscribe('monthly')}
-              disabled={loading !== null}
-              className="w-full sm:w-auto px-8 py-4 bg-white text-black font-bold rounded-xl hover:bg-zinc-200 transition-colors disabled:opacity-50"
-            >
-              {loading === 'monthly' ? 'Loading Razorpay...' : 'Subscribe Monthly (₹4,900/mo)'}
-            </button>
-            <button 
-              onClick={() => handleSubscribe('yearly')}
-              disabled={loading !== null}
-              className="w-full sm:w-auto px-8 py-4 bg-zinc-900 border border-zinc-700 text-white font-bold flex items-center justify-center gap-3 rounded-xl hover:bg-zinc-800 transition-colors disabled:opacity-50"
-            >
-              {loading === 'yearly' ? 'Loading Razorpay...' : 'Subscribe Yearly (₹49,000/yr)'}
-              <span className="bg-indigo-500 text-white text-[10px] px-2 py-1 rounded uppercase font-extrabold tracking-wider">Save 10%</span>
-            </button>
-          </div>
-        </motion.div>
+    <div className="p-6 md:p-10 max-w-7xl mx-auto space-y-10 reveal-stagger">
+      {/* Auto-checkout handler */}
+      {autoCheckout && planParam && (
+        <RazorpayCheckout 
+          plan={planParam} 
+          autoOpen={true}
+          onSuccess={() => {
+            setAutoCheckout(false)
+            router.refresh()
+          }}
+          onCancel={() => setAutoCheckout(false)}
+          onError={() => setAutoCheckout(false)}
+        />
       )}
       
-      {/* Active State Details Component */}
-      {isActive && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          
-          {/* Draw Section (Hero) */}
-          <DrawSection draw={latestDraw} />
-
-          {/* Secondary Features Grid */}
-          <div className="col-span-1 md:col-span-3">
-            <h3 className="text-xl font-bold text-white mb-6 font-sans">Your Activity</h3>
-            <BentoGrid>
-              <BentoGridItem 
-                title="Recent Scores"
-                description="You haven't submitted any scores this week. Submit your daily round to enter the draw."
-                icon={<Activity className="w-5 h-5 text-emerald-400" />}
-                header={
-                  <div className="w-full h-full min-h-[6rem] bg-emerald-500/5 rounded-lg flex items-center justify-center">
-                    <button className="flex items-center gap-2 text-sm font-semibold text-emerald-400 bg-emerald-500/10 px-4 py-2 rounded-full hover:bg-emerald-500/20 transition-colors">
-                      Submit Score <ArrowRight className="w-4 h-4" />
-                    </button>
-                  </div>
-                }
-              />
-              <BentoGridItem 
-                title="Winnings & Payouts"
-                description="Lifetime earnings: ₹0. View your historical draw results and withdrawal options."
-                icon={<Trophy className="w-5 h-5 text-amber-400" />}
-                header={
-                  <div className="w-full h-full min-h-[6rem] bg-amber-500/5 rounded-lg border border-amber-500/10 flex items-center justify-center">
-                    <span className="text-3xl font-bold text-white/20">₹0</span>
-                  </div>
-                }
-              />
-              <BentoGridItem 
-                title="Charity Impact"
-                description="Your contributions have supported Junior Golf Foundation. Next donation scheduled for end of month."
-                icon={<Heart className="w-5 h-5 text-rose-400" />}
-                header={
-                  <div className="w-full h-full min-h-[6rem] bg-rose-500/5 rounded-lg border border-rose-500/10 flex flex-col items-center justify-center gap-2">
-                     <div className="text-xs text-rose-300 font-medium uppercase tracking-wider">Total Donated</div>
-                     <span className="text-2xl font-bold text-rose-400">₹4,900</span>
-                  </div>
-                }
-              />
-            </BentoGrid>
-          </div>
+      {/* Header */}
+      <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold text-foreground tracking-tight">Good Morning, {firstName}</h1>
+          <p className="text-muted-foreground font-medium">Welcome back to your Sovereign command center.</p>
         </div>
-      )}
+        <div className="flex items-center gap-2 px-4 py-2 bg-card border border-border rounded-2xl shadow-sm">
+          <Calendar className="w-4 h-4 text-primary" />
+          <span className="text-sm font-semibold text-foreground/80">{today}</span>
+        </div>
+      </header>
+
+      {/* Main Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        
+        {/* Left Column: Hero & Stats */}
+        <div className="lg:col-span-2 space-y-8">
+          
+          {/* Grand Draw Hero */}
+          <section className="relative overflow-hidden bg-[#262630] rounded-[32px] p-8 md:p-10 text-white group border border-white/5 shadow-2xl glow-accent">
+            {/* Background Pattern */}
+            <div className="absolute top-0 right-0 w-1/2 h-full opacity-30 pointer-events-none">
+              <div className="absolute inset-0 bg-gradient-to-l from-primary/30 to-transparent" />
+              <div className="absolute top-1/2 right-0 -translate-y-1/2 w-64 h-64 bg-primary rounded-full blur-[100px]" />
+            </div>
+
+            <div className="relative z-10 space-y-6">
+              <div className="inline-flex items-center gap-2 px-3 py-1 bg-white/10 border border-white/20 rounded-full">
+                <div className="w-2 h-2 bg-primary rounded-full animate-pulse glow-accent" />
+                <span className="text-[10px] font-black uppercase tracking-widest text-primary-foreground/80">
+                  {latestDraw?.status === 'pending' ? 'Active Draw' : 'Next Draw Scheduled'}
+                </span>
+              </div>
+              
+              <div className="space-y-2">
+                <h2 className="text-4xl md:text-5xl font-black tracking-tighter leading-none">
+                  {latestDraw ? new Date(latestDraw.draw_month).toLocaleDateString('en-US', { month: 'long' }) : 'Monthly'} <span className="text-primary">Grand Draw</span>
+                </h2>
+                <p className="text-muted-foreground text-lg max-w-md font-medium leading-relaxed">
+                  Support {profile.charity_id ? 'your chosen' : 'a global'} charity initiative and enter to win this month's jackpot.
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-8 pt-4">
+                <div className="space-y-1">
+                  <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Time Remaining</p>
+                  <div className="flex items-center gap-2 text-2xl font-black tracking-tight">
+                    <Clock className="w-5 h-5 text-primary" />
+                    <span>{daysLeft}d 05h 22m</span>
+                  </div>
+                </div>
+                <div className="h-10 w-px bg-white/10" />
+                <div className="space-y-1">
+                  <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Jackpot Prize</p>
+                  <div className="text-2xl font-black text-primary tracking-tight">
+                    ₹{(latestDraw?.total_pool || 250000).toLocaleString()}
+                  </div>
+                </div>
+              </div>
+
+              <div className="pt-4">
+                {isSubscribed ? (
+                  <button className="btn-primary flex items-center gap-2 group/btn !bg-white !text-slate-900 !hover:bg-primary !hover:text-white transition-all">
+                    <span>Record New Score</span>
+                    <ArrowRight className="w-4 h-4 group-hover/btn:translate-x-1 transition-transform" />
+                  </button>
+                ) : (
+                  <RazorpayCheckout 
+                    plan="monthly"
+                    trigger={
+                      <button className="btn-primary flex items-center gap-2 group/btn">
+                        <span>Subscribe to Enter</span>
+                        <ArrowRight className="w-4 h-4 group-hover/btn:translate-x-1 transition-transform" />
+                      </button>
+                    }
+                  />
+                )}
+              </div>
+            </div>
+          </section>
+
+          {/* Stats Row */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="premium-card p-6 flex items-center justify-between">
+              <div className="space-y-1">
+                <p className="text-sm font-bold text-muted-foreground">Subscription</p>
+                <div className="flex flex-col gap-2">
+                  <p className={cn("text-2xl font-black tracking-tight", isSubscribed ? "text-foreground" : "text-warning")}>
+                    {isSubscribed ? 'Active Status' : 'Inactive'}
+                  </p>
+                  <div className={cn(
+                    "flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full w-fit border",
+                    isSubscribed ? "bg-success/10 text-success border-success/20" : "bg-warning/10 text-warning border-warning/20"
+                  )}>
+                    <div className={cn("w-1.5 h-1.5 rounded-full", isSubscribed ? "bg-success glow-success" : "bg-warning")} />
+                    <span>{isSubscribed ? (profile.sub_plan === 'yearly' ? 'Sovereign Elite' : 'Sovereign Tier') : 'Not Enrolled'}</span>
+                  </div>
+                </div>
+              </div>
+              <div className={cn("w-14 h-14 rounded-2xl flex items-center justify-center glow-accent", isSubscribed ? "bg-primary/10" : "bg-warning/10")}>
+                {isSubscribed ? <TrendingUp className="w-7 h-7 text-primary" /> : <CreditCard className="w-7 h-7 text-warning" />}
+              </div>
+            </div>
+
+            <div className="premium-card p-6 flex items-center justify-between">
+              <div className="space-y-1">
+                <p className="text-sm font-bold text-muted-foreground">Best Performance</p>
+                <p className="text-2xl font-black text-foreground tracking-tight">{bestScore > 0 ? `${bestScore} Points` : '—'}</p>
+                <p className="text-[10px] text-muted-foreground font-black uppercase tracking-widest mt-2">Verified over {totalRounds} rounds</p>
+              </div>
+              <div className="w-14 h-14 bg-primary/10 rounded-2xl flex items-center justify-center glow-accent">
+                <Trophy className="w-7 h-7 text-primary" />
+              </div>
+            </div>
+          </div>
+
+          {/* Activity Section */}
+          <section className="space-y-6">
+            <div className="flex items-center justify-between">
+              <h3 className="text-2xl font-bold text-foreground tracking-tight">Recent Rounds</h3>
+              <button className="text-[10px] font-black uppercase tracking-widest text-primary hover:underline">View Performance Log</button>
+            </div>
+            <div className="space-y-4">
+              {initialScores.length === 0 ? (
+                <div className="premium-card p-12 text-center space-y-4 border-dashed">
+                  <div className="w-16 h-16 bg-muted rounded-2xl flex items-center justify-center mx-auto text-muted-foreground">
+                    <Target className="w-8 h-8" />
+                  </div>
+                  <p className="text-muted-foreground font-medium italic">No rounds recorded this period. Record your first score to enter.</p>
+                </div>
+              ) : (
+                initialScores.slice(0, 3).map((score) => (
+                  <div key={score.id} className="premium-card p-5 flex items-center justify-between group hover:border-primary/50 transition-all cursor-pointer">
+                    <div className="flex items-center gap-5">
+                      <div className="w-12 h-12 bg-muted rounded-2xl flex items-center justify-center group-hover:bg-primary transition-colors glow-accent">
+                        <span className="text-lg font-black text-foreground group-hover:text-white">{score.score}</span>
+                      </div>
+                      <div>
+                        <p className="text-base font-bold text-foreground">Stableford Verified</p>
+                        <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">{new Date(score.entry_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm font-black text-primary">+1 Entry Point</p>
+                      <div className="flex items-center gap-1.5 justify-end mt-1">
+                        <div className="w-1.5 h-1.5 bg-success rounded-full glow-success" />
+                        <p className="text-[10px] text-muted-foreground font-black uppercase tracking-widest">Verified</p>
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </section>
+
+        </div>
+
+        {/* Right Column: Financials & Charity */}
+        <div className="space-y-8">
+          
+          {/* Earnings Card */}
+          <section className="premium-card p-8 space-y-8 bg-card border-border">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xl font-bold text-foreground tracking-tight">Financials</h3>
+              <div className="w-12 h-12 bg-primary/10 rounded-2xl flex items-center justify-center glow-accent">
+                <Wallet className="w-6 h-6 text-primary" />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <p className="text-4xl font-black text-foreground tracking-tighter">₹{totalWinnings.toLocaleString()}</p>
+              <p className="text-sm font-medium text-muted-foreground leading-none">Total Sovereign Winnings</p>
+            </div>
+            <button className="w-full py-4 bg-muted border border-border rounded-2xl text-[10px] font-black uppercase tracking-widest text-foreground hover:bg-white/5 transition-all active:scale-95">
+              Manage Secure Payouts
+            </button>
+          </section>
+
+          {/* Charity Impact Card */}
+          <section className="premium-card p-8 space-y-8 bg-gradient-to-br from-card to-success/5 border-success/10">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xl font-bold text-foreground tracking-tight">Social Impact</h3>
+              <div className="w-12 h-12 bg-success/10 rounded-2xl flex items-center justify-center glow-success">
+                <Heart className="w-6 h-6 text-success" />
+              </div>
+            </div>
+            <div className="space-y-6">
+              <div className="space-y-2">
+                <p className="text-5xl font-black text-success tracking-tighter">
+                  {Math.round(totalCharity / 100)}kg
+                </p>
+                <p className="text-sm font-medium text-muted-foreground leading-none">Plastic removed from oceans</p>
+              </div>
+              <div className="space-y-3">
+                <div className="flex justify-between text-[10px] font-black uppercase tracking-widest text-muted-foreground">
+                  <span>Community Goal</span>
+                  <span className="text-success">75% Complete</span>
+                </div>
+                <div className="h-2.5 bg-muted rounded-full overflow-hidden border border-border/50">
+                  <motion.div 
+                    initial={{ width: 0 }}
+                    animate={{ width: '75%' }}
+                    className="h-full bg-success rounded-full glow-success" 
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="p-4 bg-white/5 border border-white/5 rounded-[24px] flex items-center gap-4 group cursor-pointer hover:border-success/30 transition-all">
+              <div className="w-10 h-10 rounded-full overflow-hidden bg-muted flex-shrink-0 border border-border relative">
+                <Image src="https://images.unsplash.com/photo-1583212292454-1fe6229603b7?auto=format&fit=crop&q=80&w=100" alt="Ocean Cleanup" fill className="object-cover grayscale group-hover:grayscale-0 transition-all" sizes="40px" />
+              </div>
+              <div className="flex-1">
+                <p className="text-xs font-bold text-foreground leading-tight">The Ocean Cleanup</p>
+                <p className="text-[10px] text-muted-foreground font-black uppercase tracking-widest">Active Partner</p>
+              </div>
+              <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-success transition-transform group-hover:translate-x-1" />
+            </div>
+          </section>
+
+          {/* Prompt to Subscribe if not active */}
+          {!isSubscribed && (
+            <section className="bg-warning rounded-[32px] p-8 text-white space-y-6 shadow-2xl shadow-warning/20 relative overflow-hidden group">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
+              <div className="flex items-center gap-3 relative z-10">
+                <AlertCircle className="w-8 h-8" />
+                <p className="text-xl font-black tracking-tight">Entry Suspended</p>
+              </div>
+              <p className="text-sm text-white/90 font-medium leading-relaxed relative z-10">
+                Your subscription is currently inactive. Re-activate now to participate in this month's draw and protect your streak.
+              </p>
+              <RazorpayCheckout 
+                plan="monthly"
+                trigger={
+                  <button className="w-full py-4 bg-white text-warning font-black rounded-2xl text-[10px] uppercase tracking-widest hover:bg-amber-50 transition-all active:scale-95 shadow-xl relative z-10">
+                    Re-activate Subscription
+                  </button>
+                }
+              />
+            </section>
+          )}
+
+        </div>
+
+      </div>
     </div>
   )
 }
-
