@@ -1,9 +1,9 @@
 import type { Profile } from './profile'
-import type { Score, Draw, DrawEntry, Winner } from './draw'
+import type { Score, Draw, DrawEntry, Winner, DrawStatus } from './draw'
 import type { Charity } from './charity'
 import type { PrizePoolLedgerEntry } from './payment'
 
-export type { Profile, Score, Draw, DrawEntry, Winner, Charity, PrizePoolLedgerEntry }
+export type { Profile, Score, Draw, DrawEntry, Winner, Charity, PrizePoolLedgerEntry, DrawStatus }
 
 export type Database = {
   public: {
